@@ -1,0 +1,35 @@
+database:
+  type: SQLITE
+  sqlite:
+    file: data/marriages.db
+  mysql:
+    host: 127.0.0.1
+    port: 3306
+    database: josfamily
+    username: root
+    password: change-me
+    parameters: useSSL=false&cachePrepStmts=true&prepStmtCacheSize=250&prepStmtCacheSqlLimit=2048
+  pool:
+    maximum-pool-size: 8
+    connection-timeout-ms: 10000
+
+marriage:
+  proposal-expiry-seconds: 60
+  broadcast-marriages: true
+  divorce-requires-confirmation: true
+
+adoption:
+  request-expiry-seconds: 60
+  broadcast-adoptions: true
+  max-parents-per-child: 2
+  max-children-per-parent: 0
+
+family-tree:
+  max-generations: 4
+  max-members: 48
+
+modules:
+  marriage-cost:
+    enabled: false
+    amount: 500.0
+    charge-mode: BOTH

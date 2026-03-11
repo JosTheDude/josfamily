@@ -1,0 +1,88 @@
+prefix: ""
+
+help:
+  player: "<prefix><#d3d3d3>Use <#89b4fa>/family &lt;player&gt;</#89b4fa> to propose, <#89b4fa>/family accept [player]</#89b4fa>, <#89b4fa>/family deny [player]</#89b4fa>, <#89b4fa>/family divorce</#89b4fa>, <#89b4fa>/family tree [player]</#89b4fa>, or <#89b4fa>/family status [player]</#89b4fa>.</#d3d3d3>"
+  adopt: "<prefix><#d3d3d3>Use <#89b4fa>/adopt &lt;player&gt;</#89b4fa>, <#89b4fa>/adopt accept [player]</#89b4fa>, <#89b4fa>/adopt deny [player]</#89b4fa>, <#89b4fa>/adopt unadopt &lt;player&gt;</#89b4fa>, <#89b4fa>/adopt disown &lt;player&gt;</#89b4fa>, or <#89b4fa>/adopt tree [player]</#89b4fa>.</#d3d3d3>"
+
+errors:
+  no-permission: "<prefix><#f38ba8>You do not have permission for that.</#f38ba8>"
+  storage-failure: "<prefix><#f38ba8>A database error occurred. Try again in a moment.</#f38ba8>"
+  economy-unavailable: "<prefix><#f38ba8>The marriage cost module is enabled, but no Vault economy provider is available.</#f38ba8>"
+
+admin:
+  reload-success: "<prefix><#a6e3a1>Configuration reloaded.</#a6e3a1>"
+  reload-failure: "<prefix><#f38ba8>Reload failed:</#f38ba8> <#d3d3d3><error></#d3d3d3>"
+
+proposal:
+  sent: "<prefix><#d3d3d3>You proposed to <#f5c2e7><player></#f5c2e7>. They have <#89dceb><seconds>s</#89dceb> to respond.</#d3d3d3>"
+  received: "<prefix><#f5c2e7><player></#f5c2e7><#d3d3d3> proposed to you. Use the menu or <#89b4fa>/family accept <player></#89b4fa>.</#d3d3d3>"
+  already-sent: "<prefix><#f38ba8>You already have an active outgoing proposal.</#f38ba8>"
+  target-busy: "<prefix><#f38ba8><player> already has a pending proposal.</#f38ba8>"
+  none: "<prefix><#f38ba8>You do not have any pending proposal.</#f38ba8>"
+  none-from-player: "<prefix><#f38ba8>You do not have a pending proposal from that player.</#f38ba8>"
+  proposer-offline: "<prefix><#f38ba8>That proposal expired because the proposer left.</#f38ba8>"
+  denied-target: "<prefix><#d3d3d3>You denied <#f5c2e7><player></#f5c2e7>'s proposal.</#d3d3d3>"
+  denied-proposer: "<prefix><#f38ba8><player> denied your proposal.</#f38ba8>"
+  expired-proposer: "<prefix><#d3d3d3>Your proposal to <#f5c2e7><player></#f5c2e7> expired.</#d3d3d3>"
+  expired-target: "<prefix><#d3d3d3>The proposal from <#f5c2e7><player></#f5c2e7> expired.</#d3d3d3>"
+  cancelled-disconnect: "<prefix><#d3d3d3>The proposal involving <#f5c2e7><player></#f5c2e7> was cancelled because they left.</#d3d3d3>"
+
+adoption-request:
+  sent: "<prefix><#d3d3d3>You sent an adoption request to <#f5c2e7><player></#f5c2e7>. They have <#89dceb><seconds>s</#89dceb> to respond.</#d3d3d3>"
+  received: "<prefix><#f5c2e7><player></#f5c2e7><#d3d3d3> wants to adopt you. Use the menu or <#89b4fa>/family adopt accept <player></#89b4fa>.</#d3d3d3>"
+  already-sent: "<prefix><#f38ba8>You already have an active outgoing adoption request.</#f38ba8>"
+  target-busy: "<prefix><#f38ba8><player> already has a pending adoption request.</#f38ba8>"
+  none: "<prefix><#f38ba8>You do not have any pending adoption request.</#f38ba8>"
+  none-from-player: "<prefix><#f38ba8>You do not have a pending adoption request from that player.</#f38ba8>"
+  parent-offline: "<prefix><#f38ba8>That adoption request expired because the parent left.</#f38ba8>"
+  denied-child: "<prefix><#d3d3d3>You denied <#f5c2e7><player></#f5c2e7>'s adoption request.</#d3d3d3>"
+  denied-parent: "<prefix><#f38ba8><player> denied your adoption request.</#f38ba8>"
+  expired-parent: "<prefix><#d3d3d3>Your adoption request to <#f5c2e7><player></#f5c2e7> expired.</#d3d3d3>"
+  expired-child: "<prefix><#d3d3d3>The adoption request from <#f5c2e7><player></#f5c2e7> expired.</#d3d3d3>"
+  cancelled-disconnect: "<prefix><#d3d3d3>The adoption request involving <#f5c2e7><player></#f5c2e7> was cancelled because they left.</#d3d3d3>"
+
+marriage:
+  cannot-marry-self: "<prefix><#f38ba8>You cannot marry yourself.</#f38ba8>"
+  already-married: "<prefix><#f38ba8>You are already married.</#f38ba8>"
+  target-married: "<prefix><#f38ba8><player> is already married.</#f38ba8>"
+  not-married: "<prefix><#f38ba8>You are not married.</#f38ba8>"
+  created-self: "<prefix><#a6e3a1>You are now married to <#f5c2e7><player></#f5c2e7>.</#a6e3a1>"
+  created-partner: "<prefix><#a6e3a1>You are now married to <#f5c2e7><player></#f5c2e7>.</#a6e3a1>"
+  divorced-self: "<prefix><#f38ba8>You divorced <#f5c2e7><player></#f5c2e7>.</#f38ba8>"
+  divorced-partner: "<prefix><#f38ba8><player> divorced you.</#f38ba8>"
+  broadcast: "<prefix><#f5c2e7><player_one></#f5c2e7><#d3d3d3> and </#d3d3d3><#f5c2e7><player_two></#f5c2e7><#d3d3d3> are now married.</#d3d3d3>"
+
+adoption:
+  cannot-adopt-self: "<prefix><#f38ba8>You cannot adopt yourself.</#f38ba8>"
+  already-related: "<prefix><#f38ba8>You already have an adoption relationship with <#f5c2e7><player></#f5c2e7>.</#f38ba8>"
+  child-limit: "<prefix><#f38ba8><player> already has the maximum number of parents.</#f38ba8>"
+  parent-limit: "<prefix><#f38ba8>You already have the maximum number of children allowed.</#f38ba8>"
+  created-child: "<prefix><#a6e3a1><player> is now your parent.</#a6e3a1>"
+  created-parent: "<prefix><#a6e3a1><player> is now your child.</#a6e3a1>"
+  removed-self: "<prefix><#f38ba8>Your adoption relationship with <#f5c2e7><player></#f5c2e7> was removed.</#f38ba8>"
+  removed-other: "<prefix><#f38ba8>Your adoption relationship with <#f5c2e7><player></#f5c2e7> was removed.</#f38ba8>"
+  not-related: "<prefix><#f38ba8>You do not have an adoption relationship with that player.</#f38ba8>"
+  broadcast: "<prefix><#f5c2e7><parent></#f5c2e7><#d3d3d3> adopted </#d3d3d3><#f5c2e7><child></#f5c2e7><#d3d3d3>.</#d3d3d3>"
+
+cost:
+  charged: "<prefix><#89dceb>You paid <#f9e2af><amount></#f9e2af> for your marriage.</#89dceb>"
+  refunded: "<prefix><#89dceb>Your marriage payment of <#f9e2af><amount></#f9e2af> was refunded because the marriage could not be saved.</#89dceb>"
+  insufficient-self: "<prefix><#f38ba8>You need <#f9e2af><amount></#f9e2af> to marry <#f5c2e7><player></#f5c2e7>.</#f38ba8>"
+  insufficient-other: "<prefix><#f38ba8><player> does not have enough money for the marriage cost of <#f9e2af><amount></#f9e2af>.</#f38ba8>"
+
+status:
+  single: "<prefix><#f5c2e7><player></#f5c2e7><#d3d3d3> is currently single.</#d3d3d3>"
+  pending: "<prefix><#d3d3d3>Pending proposal from <#f5c2e7><partner></#f5c2e7>.</#d3d3d3>"
+  married: "<prefix><#f5c2e7><player></#f5c2e7><#d3d3d3> is married to </#d3d3d3><#f5c2e7><partner></#f5c2e7><#d3d3d3> since </#d3d3d3><#89dceb><date></#89dceb><#d3d3d3>.</#d3d3d3>"
+  parents: "<prefix><#d3d3d3>Parents:</#d3d3d3> <#f5c2e7><players></#f5c2e7>"
+  children: "<prefix><#d3d3d3>Children:</#d3d3d3> <#f5c2e7><players></#f5c2e7>"
+  pending-adoption: "<prefix><#d3d3d3>Pending adoption request from <#f5c2e7><partner></#f5c2e7>.</#d3d3d3>"
+
+tree:
+  title: "<prefix><#89dceb><bold>Family Tree</bold></#89dceb> <#d3d3d3>for <#f5c2e7><player></#f5c2e7></#d3d3d3>"
+  line: "<#d3d3d3><label>:</#d3d3d3> <#f5c2e7><members></#f5c2e7>"
+  empty: "<prefix><#f38ba8>No family relationships were found for <#f5c2e7><player></#f5c2e7>.</#f38ba8>"
+  truncated: "<prefix><#f9e2af>Tree output was truncated at <max_members> members across <max_generations> generations.</#f9e2af>"
+
+format:
+  free-cost: "free"
