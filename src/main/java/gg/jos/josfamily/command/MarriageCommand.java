@@ -28,6 +28,15 @@ import org.bukkit.entity.Player;
 public final class MarriageCommand extends BaseCommand {
     private static final DateTimeFormatter DATE_FORMATTER = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm")
         .withZone(ZoneId.systemDefault());
+    private static final String PERMISSION_PROPOSE = "josfamily.command.propose";
+    private static final String PERMISSION_RING = "josfamily.command.ring";
+    private static final String PERMISSION_STATUS = "josfamily.command.status";
+    private static final String PERMISSION_ACCEPT = "josfamily.command.accept";
+    private static final String PERMISSION_DENY = "josfamily.command.deny";
+    private static final String PERMISSION_DIVORCE = "josfamily.command.divorce";
+    private static final String PERMISSION_ADMIN = "josfamily.admin";
+    private static final String PERMISSION_ADMIN_RELOAD = "josfamily.admin.reload";
+    private static final String PERMISSION_ADMIN_INSPECT = "josfamily.admin.inspect";
 
     private final JosFamily plugin;
 
@@ -41,6 +50,10 @@ public final class MarriageCommand extends BaseCommand {
     @Description("Open your status or alias /marry propose [player]")
     public void onDefault(Player player, @Optional String targetName) {
         if (targetName == null || targetName.isBlank()) {
+            if (!requirePermission(player, PERMISSION_STATUS)) {
+                return;
+            }
+
             showStatus(player, player.getUniqueId(), player.getName());
             return;
         }
@@ -53,6 +66,10 @@ public final class MarriageCommand extends BaseCommand {
     @Syntax("<player>")
     @Description("Send a marriage proposal")
     public void onPropose(Player player, String targetName) {
+        if (!requirePermission(player, PERMISSION_PROPOSE)) {
+            return;
+        }
+
         if (player.getName().equalsIgnoreCase(targetName)) {
             plugin.messages().send(player, "marriage.cannot-marry-self");
             return;
@@ -68,6 +85,10 @@ public final class MarriageCommand extends BaseCommand {
     @Syntax("<player>")
     @Description("Buy a marriage ring for a player")
     public void onRing(Player player, String targetName) {
+        if (!requirePermission(player, PERMISSION_RING)) {
+            return;
+        }
+
         if (player.getName().equalsIgnoreCase(targetName)) {
             plugin.messages().send(player, "marriage.cannot-marry-self");
             return;
@@ -82,13 +103,16 @@ public final class MarriageCommand extends BaseCommand {
     @Syntax("[player]")
     @CommandCompletion("@players")
     public void onStatus(Player player, @Optional String targetName) {
+        if (!requirePermission(player, PERMISSION_STATUS)) {
+            return;
+        }
+
         if (targetName == null || targetName.isBlank() || player.getName().equalsIgnoreCase(targetName)) {
             showStatus(player, player.getUniqueId(), player.getName());
             return;
         }
 
-        if (!player.hasPermission("josfamily.admin.inspect")) {
-            plugin.messages().send(player, "errors.no-permission");
+        if (!requirePermission(player, PERMISSION_ADMIN_INSPECT)) {
             return;
         }
 
@@ -101,6 +125,10 @@ public final class MarriageCommand extends BaseCommand {
     @CommandCompletion("@players")
     @Syntax("[player]")
     public void onAccept(Player player, @Optional String proposerName) {
+        if (!requirePermission(player, PERMISSION_ACCEPT)) {
+            return;
+        }
+
         MarriageService service = plugin.marriageService();
         service.acceptProposal(player, blankToNull(proposerName));
     }
@@ -109,12 +137,20 @@ public final class MarriageCommand extends BaseCommand {
     @CommandCompletion("@players")
     @Syntax("[player]")
     public void onDeny(Player player, @Optional String proposerName) {
+        if (!requirePermission(player, PERMISSION_DENY)) {
+            return;
+        }
+
         MarriageService service = plugin.marriageService();
         service.denyProposal(player, blankToNull(proposerName));
     }
 
     @Subcommand("divorce")
     public void onDivorce(Player player) {
+        if (!requirePermission(player, PERMISSION_DIVORCE)) {
+            return;
+        }
+
         MarriageRecord marriage = plugin.marriageService().getMarriage(player.getUniqueId());
         if (marriage == null) {
             plugin.messages().send(player, "marriage.not-married");
@@ -131,8 +167,7 @@ public final class MarriageCommand extends BaseCommand {
 
     @Subcommand("admin")
     public void onAdmin(Player player) {
-        if (!player.hasPermission("josfamily.admin.reload")) {
-            plugin.messages().send(player, "errors.no-permission");
+        if (!requirePermission(player, PERMISSION_ADMIN)) {
             return;
         }
 
@@ -141,8 +176,7 @@ public final class MarriageCommand extends BaseCommand {
 
     @Subcommand("admin reload")
     public void onAdminReload(Player player) {
-        if (!player.hasPermission("josfamily.admin.reload")) {
-            plugin.messages().send(player, "errors.no-permission");
+        if (!requirePermission(player, PERMISSION_ADMIN) || !requirePermission(player, PERMISSION_ADMIN_RELOAD)) {
             return;
         }
 
@@ -259,6 +293,15 @@ public final class MarriageCommand extends BaseCommand {
 
     private String blankToNull(String value) {
         return value == null || value.isBlank() ? null : value;
+    }
+
+    private boolean requirePermission(Player player, String permission) {
+        if (player.hasPermission(permission)) {
+            return true;
+        }
+
+        plugin.messages().send(player, "errors.no-permission");
+        return false;
     }
 
     private record ResolvedPlayer(UUID playerId, String name) {}

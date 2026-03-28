@@ -10,12 +10,36 @@ softdepend: [Vault]
 commands:
   marry:
     description: Main marriage command
-    usage: /marry [player|propose|ring|accept|deny|divorce|status|admin reload]
+    usage: /marry [player|propose|ring|accept|deny|divorce|status|admin|admin reload]
     aliases: [marriage, family]
 permissions:
+  josfamily.command.propose:
+    description: Use /family propose <player> or /family <player>
+    default: true
+  josfamily.command.ring:
+    description: Use /family ring <player>
+    default: true
+  josfamily.command.status:
+    description: Use /family or /family status [player] for your own status
+    default: true
+  josfamily.command.accept:
+    description: Use /family accept [player]
+    default: true
+  josfamily.command.deny:
+    description: Use /family deny [player]
+    default: true
+  josfamily.command.divorce:
+    description: Use /family divorce
+    default: true
+  josfamily.admin:
+    description: Access /family admin commands
+    default: op
+    children:
+      josfamily.admin.reload: true
+      josfamily.admin.inspect: true
   josfamily.admin.reload:
     description: Reload JosFamily configuration and language files
     default: op
   josfamily.admin.inspect:
-    description: Inspect other players' marriage state
+    description: Inspect another player's marriage state with /family status <player>
     default: op
