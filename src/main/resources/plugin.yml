@@ -3,18 +3,15 @@ version: '1.0'
 main: gg.jos.josfamily.JosFamily
 api-version: '1.21'
 authors: [ JosTheDude ]
-description: A simple, scalable, easy-to-use family system
+description: A simple, scalable marriage system
 website: https://jos.gg/
 folia-supported: true
 softdepend: [Vault]
 commands:
   marry:
     description: Main marriage command
-    usage: /marry [player|accept|deny|divorce|tree|status|reload]
+    usage: /marry [player|propose|accept|deny|divorce|status|reload]
     aliases: [marriage, family]
-  adopt:
-    description: Adoption and family tree command
-    usage: /adopt [player|accept|deny|unadopt|disown|tree]
 permissions:
   josfamily.admin.reload:
     description: Reload JosFamily configuration and language files

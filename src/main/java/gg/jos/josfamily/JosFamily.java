@@ -1,17 +1,14 @@
 package gg.jos.josfamily;
 
 import co.aikar.commands.PaperCommandManager;
-import gg.jos.josfamily.command.AdoptCommand;
 import gg.jos.josfamily.command.MarriageCommand;
 import gg.jos.josfamily.compat.economy.MarriageCostService;
 import gg.jos.josfamily.config.MessageService;
 import gg.jos.josfamily.config.PluginSettings;
 import gg.jos.josfamily.listener.PlayerConnectionListener;
 import gg.jos.josfamily.scheduler.FoliaTaskDispatcher;
-import gg.jos.josfamily.service.AdoptionService;
 import gg.jos.josfamily.service.FamilyTreeService;
 import gg.jos.josfamily.service.MarriageService;
-import gg.jos.josfamily.storage.SqlAdoptionRepository;
 import gg.jos.josfamily.storage.DatabaseFactory;
 import gg.jos.josfamily.storage.SqlMarriageRepository;
 import gg.jos.josfamily.ui.MarriageUiFactory;
@@ -36,10 +33,8 @@ public final class JosFamily extends JavaPlugin {
     private FoliaTaskDispatcher taskDispatcher;
     private DatabaseFactory.ManagedDataSource managedDataSource;
     private SqlMarriageRepository marriageRepository;
-    private SqlAdoptionRepository adoptionRepository;
     private MarriageCostService marriageCostService;
     private MarriageService marriageService;
-    private AdoptionService adoptionService;
     private FamilyTreeService familyTreeService;
     private MarriageUiFactory marriageUiFactory;
     private PaperCommandManager commandManager;
@@ -70,9 +65,6 @@ public final class JosFamily extends JavaPlugin {
         if (marriageService != null) {
             marriageService.shutdown();
         }
-        if (adoptionService != null) {
-            adoptionService.shutdown();
-        }
         closeDataSource();
     }
 
@@ -85,29 +77,21 @@ public final class JosFamily extends JavaPlugin {
         if (marriageService != null) {
             marriageService.shutdown();
         }
-        if (adoptionService != null) {
-            adoptionService.shutdown();
-        }
         closeDataSource();
         managedDataSource = DatabaseFactory.create(this, settings.database());
         marriageRepository = new SqlMarriageRepository(managedDataSource.dataSource(), settings.database().type());
-        adoptionRepository = new SqlAdoptionRepository(managedDataSource.dataSource());
         marriageRepository.initialize();
-        adoptionRepository.initialize();
 
         marriageCostService = MarriageCostService.create(this, settings.marriageCost(), messages);
         marriageService = new MarriageService(this, taskDispatcher, settings, messages, marriageRepository, marriageCostService);
-        adoptionService = new AdoptionService(this, taskDispatcher, settings, messages, adoptionRepository);
         marriageService.initialize();
-        adoptionService.initialize();
-        familyTreeService = new FamilyTreeService(settings, messages, marriageService, adoptionService);
+        familyTreeService = new FamilyTreeService(marriageService);
         marriageUiFactory = new MarriageUiFactory(this, uiConfig);
     }
 
     private void registerCommands() {
         commandManager = new PaperCommandManager(this);
         commandManager.registerCommand(new MarriageCommand(this));
-        commandManager.registerCommand(new AdoptCommand(this));
     }
 
     private void closeDataSource() {
@@ -118,7 +102,7 @@ public final class JosFamily extends JavaPlugin {
     }
 
     private MessageService loadMessages() {
-        return new MessageService(loadYamlWithDefaults("messages.yml", messagesFile));
+        return new MessageService(taskDispatcher, loadYamlWithDefaults("messages.yml", messagesFile));
     }
 
     private UiConfigService loadUiConfig() {
@@ -161,10 +145,6 @@ public final class JosFamily extends JavaPlugin {
 
     public MarriageService marriageService() {
         return marriageService;
-    }
-
-    public AdoptionService adoptionService() {
-        return adoptionService;
     }
 
     public FamilyTreeService familyTreeService() {

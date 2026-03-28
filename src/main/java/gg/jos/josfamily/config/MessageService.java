@@ -1,5 +1,6 @@
 package gg.jos.josfamily.config;
 
+import gg.jos.josfamily.scheduler.FoliaTaskDispatcher;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -13,6 +14,7 @@ import net.kyori.adventure.text.serializer.legacy.LegacyComponentSerializer;
 import org.bukkit.Bukkit;
 import org.bukkit.command.CommandSender;
 import org.bukkit.configuration.file.FileConfiguration;
+import org.bukkit.entity.Player;
 
 public final class MessageService {
     private static final Pattern LEGACY_PLACEHOLDER_PATTERN = Pattern.compile("\\{[a-zA-Z0-9_-]+}");
@@ -20,12 +22,14 @@ public final class MessageService {
 
     private final MiniMessage miniMessage = MiniMessage.miniMessage();
     private final LegacyComponentSerializer legacySerializer = LegacyComponentSerializer.legacyAmpersand();
+    private final FoliaTaskDispatcher taskDispatcher;
     private final Component prefix;
     private final String legacyPrefix;
     private final Map<String, MessageTemplate> stringTemplates;
     private final Map<String, List<MessageTemplate>> listTemplates;
 
-    public MessageService(FileConfiguration config) {
+    public MessageService(FoliaTaskDispatcher taskDispatcher, FileConfiguration config) {
+        this.taskDispatcher = taskDispatcher;
         this.prefix = miniMessage.deserialize(config.getString("prefix", "<gray>[<pink>JosFamily</pink>]</gray> "));
         this.legacyPrefix = legacySerializer.serialize(prefix);
         this.stringTemplates = new HashMap<>();
@@ -65,10 +69,12 @@ public final class MessageService {
 
     public void broadcast(String path, Map<String, String> placeholders) {
         Component message = component(path, placeholders);
-        Bukkit.getConsoleSender().sendMessage(message);
-        for (CommandSender recipient : Bukkit.getOnlinePlayers()) {
-            recipient.sendMessage(message);
-        }
+        taskDispatcher.runGlobal(() -> {
+            Bukkit.getConsoleSender().sendMessage(message);
+            for (Player player : Bukkit.getOnlinePlayers()) {
+                taskDispatcher.runEntity(player, () -> player.sendMessage(message));
+            }
+        });
     }
 
     public String raw(String path, String fallback) {

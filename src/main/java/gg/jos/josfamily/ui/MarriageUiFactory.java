@@ -2,9 +2,9 @@ package gg.jos.josfamily.ui;
 
 import gg.jos.josfamily.JosFamily;
 import gg.jos.josfamily.model.MarriageRecord;
-import gg.jos.josfamily.model.PendingAdoptionRequest;
 import gg.jos.josfamily.model.PendingProposal;
 import java.util.Map;
+import java.util.UUID;
 import org.bukkit.Bukkit;
 import org.bukkit.OfflinePlayer;
 import org.bukkit.entity.Player;
@@ -21,12 +21,12 @@ public final class MarriageUiFactory {
         this.uiConfig = uiConfig;
     }
 
-    public void openProposalConfirmation(Player target, PendingProposal proposal) {
-        plugin.taskDispatcher().runEntity(target, () -> {
+    public void openProposalConfirmation(UUID targetId, PendingProposal proposal) {
+        plugin.taskDispatcher().runPlayer(targetId, target -> {
             UiConfigService.MenuConfig menu = uiConfig.menu("proposal");
             Map<String, String> placeholders = Map.of(
                 "player", proposal.proposerName(),
-                "cost", plugin.marriageCostService().displayAmount()
+                "cost", plugin.marriageCostService().displayAcceptanceCostForTarget()
             );
 
             Item info = Item.simple(menu.item("info").createItemBuilder(plugin.messages(), placeholders));
@@ -34,14 +34,14 @@ public final class MarriageUiFactory {
                 .setItemProvider(menu.item("accept").createItemBuilder(plugin.messages(), placeholders))
                 .addClickHandler(click -> {
                     target.closeInventory();
-                    plugin.marriageService().acceptProposal(target, proposal.proposerId());
+                    plugin.marriageService().acceptProposal(target, proposal.proposerName());
                 })
                 .build();
             Item deny = Item.builder()
                 .setItemProvider(menu.item("deny").createItemBuilder(plugin.messages(), placeholders))
                 .addClickHandler(click -> {
                     target.closeInventory();
-                    plugin.marriageService().denyProposal(target, proposal.proposerId());
+                    plugin.marriageService().denyProposal(target, proposal.proposerName());
                 })
                 .build();
 
@@ -95,45 +95,6 @@ public final class MarriageUiFactory {
 
             Window.builder()
                 .setViewer(player)
-                .setTitle(plugin.messages().render(menu.title(), placeholders))
-                .setUpperGui(gui)
-                .build()
-                .open();
-        });
-    }
-
-    public void openAdoptionConfirmation(Player child, PendingAdoptionRequest request) {
-        plugin.taskDispatcher().runEntity(child, () -> {
-            UiConfigService.MenuConfig menu = uiConfig.menu("adoption");
-            Map<String, String> placeholders = Map.of("player", request.parentName());
-
-            Item info = Item.simple(menu.item("info").createItemBuilder(plugin.messages(), placeholders));
-            Item accept = Item.builder()
-                .setItemProvider(menu.item("accept").createItemBuilder(plugin.messages(), placeholders))
-                .addClickHandler(click -> {
-                    child.closeInventory();
-                    plugin.adoptionService().acceptRequest(child, request.parentId());
-                })
-                .build();
-            Item deny = Item.builder()
-                .setItemProvider(menu.item("deny").createItemBuilder(plugin.messages(), placeholders))
-                .addClickHandler(click -> {
-                    child.closeInventory();
-                    plugin.adoptionService().denyRequest(child, request.parentId());
-                })
-                .build();
-
-            Gui.Builder<?, ?> guiBuilder = Gui.builder().setStructure(menu.structure().toArray(String[]::new));
-            applyFill(guiBuilder, menu, placeholders);
-            guiBuilder
-                .addIngredient(menu.item("info").slotKey(), info)
-                .addIngredient(menu.item("accept").slotKey(), accept)
-                .addIngredient(menu.item("deny").slotKey(), deny);
-
-            Gui gui = guiBuilder.build();
-
-            Window.builder()
-                .setViewer(child)
                 .setTitle(plugin.messages().render(menu.title(), placeholders))
                 .setUpperGui(gui)
                 .build()

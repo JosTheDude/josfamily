@@ -13,23 +13,21 @@ database:
     maximum-pool-size: 8
     connection-timeout-ms: 10000
 
+modules:
+  proposal-distance:
+    enabled: true
+    radius: 8.0
+  marriage-cost:
+    enabled: true
+    amount: 300.0
+    charge-mode: BOTH
+    # ACCEPT & SEND ARE THE ONLY VALID VALUES
+    # ACCEPT: The player will be charged when they accept the proposal
+    # SEND: The player will be charged when they send the proposal
+    proposer-charge-stage: SEND
+    target-charge-stage: ACCEPT
+
 marriage:
   proposal-expiry-seconds: 60
   broadcast-marriages: true
   divorce-requires-confirmation: true
-
-adoption:
-  request-expiry-seconds: 60
-  broadcast-adoptions: true
-  max-parents-per-child: 2
-  max-children-per-parent: 0
-
-family-tree:
-  max-generations: 4
-  max-members: 48
-
-modules:
-  marriage-cost:
-    enabled: false
-    amount: 500.0
-    charge-mode: BOTH

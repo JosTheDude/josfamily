@@ -15,6 +15,5 @@ public final class PlayerConnectionListener implements Listener {
     @EventHandler
     public void onQuit(PlayerQuitEvent event) {
         plugin.marriageService().clearPendingState(event.getPlayer().getUniqueId(), true);
-        plugin.adoptionService().clearPendingState(event.getPlayer().getUniqueId(), true);
     }
 }

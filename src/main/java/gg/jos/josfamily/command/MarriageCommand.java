@@ -9,22 +9,18 @@ import co.aikar.commands.annotation.Description;
 import co.aikar.commands.annotation.Optional;
 import co.aikar.commands.annotation.Subcommand;
 import co.aikar.commands.annotation.Syntax;
-import co.aikar.commands.bukkit.contexts.OnlinePlayer;
 import gg.jos.josfamily.JosFamily;
 import gg.jos.josfamily.config.MessageService;
-import gg.jos.josfamily.model.AdoptionRecord;
+import gg.jos.josfamily.config.PluginSettings;
 import gg.jos.josfamily.model.MarriageRecord;
 import gg.jos.josfamily.model.PendingProposal;
-import gg.jos.josfamily.service.AdoptionService;
 import gg.jos.josfamily.service.MarriageService;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
-import java.util.List;
 import java.util.Map;
 import java.util.UUID;
-import java.util.stream.Collectors;
-import net.kyori.adventure.text.Component;
 import org.bukkit.Bukkit;
+import org.bukkit.Location;
 import org.bukkit.OfflinePlayer;
 import org.bukkit.entity.Player;
 
@@ -42,43 +38,64 @@ public final class MarriageCommand extends BaseCommand {
     @Default
     @CommandCompletion("@players")
     @Syntax("[player]")
-    @Description("Open your status or send a marriage proposal")
-    public void onDefault(Player player, @Optional OnlinePlayer target) {
-        if (target == null) {
-            showStatus(player, player);
+    @Description("Open your status or alias /marry propose [player]")
+    public void onDefault(Player player, @Optional String targetName) {
+        if (targetName == null || targetName.isBlank()) {
+            showStatus(player, player.getUniqueId(), player.getName());
             return;
         }
 
-        propose(player, target.getPlayer());
+        onPropose(player, targetName);
+    }
+
+    @Subcommand("propose")
+    @CommandCompletion("@players")
+    @Syntax("<player>")
+    @Description("Send a marriage proposal")
+    public void onPropose(Player player, String targetName) {
+        if (player.getName().equalsIgnoreCase(targetName)) {
+            plugin.messages().send(player, "marriage.cannot-marry-self");
+            return;
+        }
+
+        resolveOnlinePlayer(player, targetName, target ->
+            plugin.taskDispatcher().runEntity(player, () -> propose(player, target.playerId(), target.name()))
+        );
     }
 
     @Subcommand("status")
     @Syntax("[player]")
     @CommandCompletion("@players")
-    public void onStatus(Player player, @Optional OnlinePlayer target) {
-        Player targetPlayer = target == null ? player : target.getPlayer();
-        if (!player.equals(targetPlayer) && !player.hasPermission("josfamily.admin.inspect")) {
+    public void onStatus(Player player, @Optional String targetName) {
+        if (targetName == null || targetName.isBlank() || player.getName().equalsIgnoreCase(targetName)) {
+            showStatus(player, player.getUniqueId(), player.getName());
+            return;
+        }
+
+        if (!player.hasPermission("josfamily.admin.inspect")) {
             plugin.messages().send(player, "errors.no-permission");
             return;
         }
 
-        showStatus(player, targetPlayer);
+        resolveOnlinePlayer(player, targetName, target ->
+            plugin.taskDispatcher().runEntity(player, () -> showStatus(player, target.playerId(), target.name()))
+        );
     }
 
     @Subcommand("accept")
     @CommandCompletion("@players")
     @Syntax("[player]")
-    public void onAccept(Player player, @Optional OnlinePlayer proposer) {
+    public void onAccept(Player player, @Optional String proposerName) {
         MarriageService service = plugin.marriageService();
-        service.acceptProposal(player, proposer == null ? null : proposer.getPlayer().getUniqueId());
+        service.acceptProposal(player, blankToNull(proposerName));
     }
 
     @Subcommand("deny")
     @CommandCompletion("@players")
     @Syntax("[player]")
-    public void onDeny(Player player, @Optional OnlinePlayer proposer) {
+    public void onDeny(Player player, @Optional String proposerName) {
         MarriageService service = plugin.marriageService();
-        service.denyProposal(player, proposer == null ? null : proposer.getPlayer().getUniqueId());
+        service.denyProposal(player, blankToNull(proposerName));
     }
 
     @Subcommand("divorce")
@@ -95,21 +112,6 @@ public final class MarriageCommand extends BaseCommand {
         }
 
         plugin.marriageService().divorce(player);
-    }
-
-    @Subcommand("tree")
-    @CommandCompletion("@players")
-    @Syntax("[player]")
-    public void onTree(Player player, @Optional OnlinePlayer target) {
-        Player subject = target == null ? player : target.getPlayer();
-        if (!player.equals(subject) && !player.hasPermission("josfamily.admin.inspect")) {
-            plugin.messages().send(player, "errors.no-permission");
-            return;
-        }
-
-        for (Component line : plugin.familyTreeService().renderTree(subject.getUniqueId())) {
-            player.sendMessage(line);
-        }
     }
 
     @Subcommand("reload")
@@ -133,84 +135,106 @@ public final class MarriageCommand extends BaseCommand {
         plugin.messages().send(player, "help.player");
     }
 
-    private void propose(Player proposer, Player target) {
-        if (proposer.equals(target)) {
-            plugin.messages().send(proposer, "marriage.cannot-marry-self");
+    private void propose(Player proposer, UUID targetId, String targetName) {
+        PluginSettings.ProposalDistanceSettings distanceSettings = plugin.settings().proposalDistance();
+        if (distanceSettings.enabled()) {
+            Location proposerLocation = proposer.getLocation();
+            double maxDistanceSquared = distanceSettings.radius() * distanceSettings.radius();
+            plugin.taskDispatcher().runGlobal(() -> {
+                Player target = Bukkit.getPlayer(targetId);
+                if (target == null) {
+                    plugin.taskDispatcher().runEntity(
+                        proposer,
+                        () -> plugin.messages().send(proposer, "errors.player-not-found", Map.of("player", targetName))
+                    );
+                    return;
+                }
+
+                plugin.taskDispatcher().runEntity(target, () -> {
+                    boolean withinRange = target.getWorld().equals(proposerLocation.getWorld())
+                        && target.getLocation().distanceSquared(proposerLocation) <= maxDistanceSquared;
+                    plugin.taskDispatcher().runEntity(proposer, () -> {
+                        if (!withinRange) {
+                            plugin.messages().send(
+                                proposer,
+                                "proposal.too-far",
+                                Map.of("player", targetName, "radius", formatRadius(distanceSettings.radius()))
+                            );
+                            return;
+                        }
+
+                        submitProposal(proposer, targetId, targetName);
+                    });
+                });
+            });
             return;
         }
 
+        submitProposal(proposer, targetId, targetName);
+    }
+
+    private void submitProposal(Player proposer, UUID targetId, String targetName) {
         MarriageService service = plugin.marriageService();
-        if (service.tryAcceptReciprocalProposal(proposer, target)) {
+        if (service.tryAcceptReciprocalProposal(proposer, targetId)) {
             return;
         }
 
-        PendingProposal proposal = service.createProposal(proposer, target);
+        PendingProposal proposal = service.createProposal(proposer, targetId, targetName);
         if (proposal == null) {
             return;
         }
 
-        plugin.marriageUiFactory().openProposalConfirmation(target, proposal);
+        plugin.marriageUiFactory().openProposalConfirmation(targetId, proposal);
     }
 
-    private void showStatus(Player viewer, Player subject) {
+    private String formatRadius(double radius) {
+        return radius == Math.rint(radius) ? Long.toString((long) radius) : Double.toString(radius);
+    }
+
+    private void showStatus(Player viewer, UUID subjectId, String subjectName) {
         MessageService messages = plugin.messages();
-        MarriageRecord marriage = plugin.marriageService().getMarriage(subject.getUniqueId());
+        MarriageRecord marriage = plugin.marriageService().getMarriage(subjectId);
         if (marriage == null) {
-            messages.send(viewer, "status.single", Map.of("player", subject.getName()));
-            java.util.Optional<PendingProposal> pending = plugin.marriageService().getIncomingProposal(subject.getUniqueId());
+            messages.send(viewer, "status.single", Map.of("player", subjectName));
+            java.util.Optional<PendingProposal> pending = plugin.marriageService().getIncomingProposal(subjectId);
             pending.ifPresent(proposal -> messages.send(
                 viewer,
                 "status.pending",
-                Map.of("player", subject.getName(), "partner", proposal.proposerName())
+                Map.of("player", subjectName, "partner", proposal.proposerName())
             ));
         } else {
-            UUID partnerId = marriage.partnerOf(subject.getUniqueId());
+            UUID partnerId = marriage.partnerOf(subjectId);
             OfflinePlayer partner = Bukkit.getOfflinePlayer(partnerId);
             messages.send(
                 viewer,
                 "status.married",
                 Map.of(
-                    "player", subject.getName(),
+                    "player", subjectName,
                     "partner", partner.getName() == null ? partnerId.toString() : partner.getName(),
                     "date", DATE_FORMATTER.format(marriage.marriedAt())
                 )
             );
         }
-
-        AdoptionService adoptionService = plugin.adoptionService();
-        List<AdoptionRecord> parents = adoptionService.parentsOf(subject.getUniqueId());
-        if (!parents.isEmpty()) {
-            messages.send(
-                viewer,
-                "status.parents",
-                Map.of("players", joinNames(parents.stream().map(record -> record.parentId()).toList()))
-            );
-        }
-
-        List<AdoptionRecord> children = adoptionService.childrenOf(subject.getUniqueId());
-        if (!children.isEmpty()) {
-            messages.send(
-                viewer,
-                "status.children",
-                Map.of("players", joinNames(children.stream().map(record -> record.childId()).toList()))
-            );
-        }
-
-        adoptionService.getIncomingRequest(subject.getUniqueId()).ifPresent(request -> messages.send(
-            viewer,
-            "status.pending-adoption",
-            Map.of("partner", request.parentName())
-        ));
     }
 
-    private String joinNames(List<UUID> playerIds) {
-        return playerIds.stream()
-            .map(Bukkit::getOfflinePlayer)
-            .map(this::nameOf)
-            .collect(Collectors.joining(", "));
+    private void resolveOnlinePlayer(Player requester, String targetName, java.util.function.Consumer<ResolvedPlayer> consumer) {
+        plugin.taskDispatcher().runGlobal(() -> {
+            Player target = Bukkit.getPlayerExact(targetName);
+            if (target == null) {
+                plugin.taskDispatcher().runEntity(
+                    requester,
+                    () -> plugin.messages().send(requester, "errors.player-not-found", Map.of("player", targetName))
+                );
+                return;
+            }
+
+            consumer.accept(new ResolvedPlayer(target.getUniqueId(), target.getName()));
+        });
     }
 
-    private String nameOf(OfflinePlayer player) {
-        return player.getName() == null ? player.getUniqueId().toString() : player.getName();
+    private String blankToNull(String value) {
+        return value == null || value.isBlank() ? null : value;
     }
+
+    private record ResolvedPlayer(UUID playerId, String name) {}
 }

@@ -5,7 +5,6 @@ import net.milkbowl.vault.economy.Economy;
 import net.milkbowl.vault.economy.EconomyResponse;
 import org.bukkit.Bukkit;
 import org.bukkit.OfflinePlayer;
-import org.bukkit.entity.Player;
 import org.bukkit.plugin.RegisteredServiceProvider;
 
 public final class VaultEconomyHook {
@@ -24,11 +23,11 @@ public final class VaultEconomyHook {
         return new VaultEconomyHook(registration.getProvider());
     }
 
-    public boolean has(Player player, double amount) {
+    public boolean has(OfflinePlayer player, double amount) {
         return economy.has(player, amount);
     }
 
-    public boolean withdraw(Player player, double amount) {
+    public boolean withdraw(OfflinePlayer player, double amount) {
         EconomyResponse response = economy.withdrawPlayer(player, amount);
         return response.transactionSuccess();
     }

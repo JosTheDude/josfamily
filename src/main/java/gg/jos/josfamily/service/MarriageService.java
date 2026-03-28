@@ -4,6 +4,7 @@ import gg.jos.josfamily.JosFamily;
 import gg.jos.josfamily.compat.economy.MarriageCostService;
 import gg.jos.josfamily.config.MessageService;
 import gg.jos.josfamily.config.PluginSettings;
+import gg.jos.josfamily.model.ChargeReceipt;
 import gg.jos.josfamily.model.MarriageRecord;
 import gg.jos.josfamily.model.PendingProposal;
 import gg.jos.josfamily.scheduler.FoliaTaskDispatcher;
@@ -11,6 +12,7 @@ import gg.jos.josfamily.storage.SqlMarriageRepository;
 import io.papermc.paper.threadedregions.scheduler.ScheduledTask;
 import java.sql.SQLException;
 import java.time.Instant;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
@@ -34,6 +36,9 @@ public final class MarriageService {
     private final ConcurrentMap<UUID, PendingProposal> proposalsByTarget = new ConcurrentHashMap<>();
     private final ConcurrentMap<UUID, UUID> targetByProposer = new ConcurrentHashMap<>();
     private final ConcurrentMap<UUID, ScheduledTask> expiryTasks = new ConcurrentHashMap<>();
+    private final Object persistenceMonitor = new Object();
+    private int inFlightPersistenceTasks;
+    private boolean shuttingDown;
 
     public MarriageService(
         JosFamily plugin,
@@ -52,6 +57,9 @@ public final class MarriageService {
     }
 
     public void initialize() throws SQLException {
+        synchronized (persistenceMonitor) {
+            shuttingDown = false;
+        }
         marriagesByPlayer.clear();
         for (MarriageRecord marriage : repository.loadAll()) {
             marriagesByPlayer.put(marriage.partnerOne(), marriage);
@@ -60,10 +68,14 @@ public final class MarriageService {
     }
 
     public void shutdown() {
+        synchronized (persistenceMonitor) {
+            shuttingDown = true;
+        }
         proposalsByTarget.clear();
         targetByProposer.clear();
         expiryTasks.values().forEach(ScheduledTask::cancel);
         expiryTasks.clear();
+        waitForPersistenceTasks();
     }
 
     public MarriageRecord getMarriage(UUID playerId) {
@@ -74,16 +86,20 @@ public final class MarriageService {
         return Optional.ofNullable(proposalsByTarget.get(targetId));
     }
 
-    public PendingProposal createProposal(Player proposer, Player target) {
+    public PendingProposal createProposal(Player proposer, UUID targetId, String targetName) {
+        if (isShuttingDown()) {
+            messages.send(proposer, "errors.storage-failure");
+            return null;
+        }
         if (getMarriage(proposer.getUniqueId()) != null) {
             messages.send(proposer, "marriage.already-married");
             return null;
         }
-        if (getMarriage(target.getUniqueId()) != null) {
+        if (getMarriage(targetId) != null) {
             messages.send(
                 proposer,
                 "marriage.target-married",
-                Map.of("player", target.getName())
+                Map.of("player", targetName)
             );
             return null;
         }
@@ -91,12 +107,22 @@ public final class MarriageService {
             messages.send(proposer, "proposal.already-sent");
             return null;
         }
-        if (proposalsByTarget.containsKey(target.getUniqueId())) {
+        if (proposalsByTarget.containsKey(targetId)) {
             messages.send(
                 proposer,
                 "proposal.target-busy",
-                Map.of("player", target.getName())
+                Map.of("player", targetName)
             );
+            return null;
+        }
+
+        MarriageCostService.ChargeResult sendChargeResult = marriageCostService.chargeProposalSend(
+            proposer.getUniqueId(),
+            proposer.getName(),
+            targetId,
+            targetName
+        );
+        if (!sendChargeResult.success()) {
             return null;
         }
 
@@ -104,62 +130,65 @@ public final class MarriageService {
         PendingProposal proposal = new PendingProposal(
             proposer.getUniqueId(),
             proposer.getName(),
-            target.getUniqueId(),
-            target.getName(),
+            targetId,
+            targetName,
             now,
-            now.plusSeconds(settings.marriage().proposalExpirySeconds())
+            now.plusSeconds(settings.marriage().proposalExpirySeconds()),
+            sendChargeResult.receipts()
         );
 
-        proposalsByTarget.put(target.getUniqueId(), proposal);
-        targetByProposer.put(proposer.getUniqueId(), target.getUniqueId());
+        proposalsByTarget.put(targetId, proposal);
+        targetByProposer.put(proposer.getUniqueId(), targetId);
 
         ScheduledTask expiryTask = taskDispatcher.runAsyncLater(
             settings.marriage().proposalExpirySeconds(),
             TimeUnit.SECONDS,
-            () -> expireProposal(target.getUniqueId(), true)
+            () -> expireProposal(targetId, true)
         );
-        expiryTasks.put(target.getUniqueId(), expiryTask);
+        expiryTasks.put(targetId, expiryTask);
 
         messages.send(
             proposer,
             "proposal.sent",
-            proposalPlaceholders(target.getName())
+            proposalPlaceholders(targetName)
         );
-        messages.send(
-            target,
-            "proposal.received",
-            proposalPlaceholders(proposer.getName())
+        runOnlinePlayerTask(
+            targetId,
+            onlineTarget -> messages.send(
+                onlineTarget,
+                "proposal.received",
+                proposalPlaceholders(proposer.getName())
+            )
         );
+        marriageCostService.notifyChargedPlayers(sendChargeResult);
         return proposal;
     }
 
-    public boolean tryAcceptReciprocalProposal(Player proposer, Player target) {
+    public boolean tryAcceptReciprocalProposal(Player proposer, UUID targetId) {
         PendingProposal incoming = proposalsByTarget.get(proposer.getUniqueId());
-        if (incoming == null || !incoming.proposerId().equals(target.getUniqueId())) {
+        if (incoming == null || !incoming.proposerId().equals(targetId)) {
             return false;
         }
 
-        acceptProposal(proposer, target.getUniqueId());
+        acceptProposal(proposer, incoming.proposerName());
         return true;
     }
 
-    public void acceptProposal(Player target, UUID proposerId) {
+    public void acceptProposal(Player target, String proposerName) {
+        if (isShuttingDown()) {
+            messages.send(target, "errors.storage-failure");
+            return;
+        }
         PendingProposal proposal = proposalsByTarget.get(target.getUniqueId());
         if (proposal == null) {
             messages.send(target, "proposal.none");
             return;
         }
-        if (proposerId != null && !proposal.proposerId().equals(proposerId)) {
+        if (proposerName != null && !proposal.proposerName().equalsIgnoreCase(proposerName)) {
             messages.send(target, "proposal.none-from-player");
             return;
         }
 
-        Player proposer = Bukkit.getPlayer(proposal.proposerId());
-        if (proposer == null || !proposer.isOnline()) {
-            clearPendingState(target.getUniqueId(), false);
-            messages.send(target, "proposal.proposer-offline");
-            return;
-        }
         if (getMarriage(target.getUniqueId()) != null || getMarriage(proposal.proposerId()) != null) {
             clearPendingState(target.getUniqueId(), false);
             messages.send(target, "marriage.already-married");
@@ -170,13 +199,24 @@ public final class MarriageService {
         taskDispatcher.runGlobal(() -> {
             Player onlineTarget = Bukkit.getPlayer(proposal.targetId());
             Player onlineProposer = Bukkit.getPlayer(proposal.proposerId());
-            if (onlineTarget == null || onlineProposer == null || !onlineTarget.isOnline() || !onlineProposer.isOnline()) {
+            if (onlineTarget == null || onlineProposer == null) {
                 runOnlinePlayerTask(proposal.targetId(), player -> messages.send(player, "proposal.proposer-offline"));
                 return;
             }
 
-            MarriageCostService.ChargeResult chargeResult = marriageCostService.charge(onlineProposer, onlineTarget);
+            MarriageCostService.ChargeResult chargeResult = marriageCostService.chargeProposalAcceptance(
+                proposal.proposerId(),
+                proposal.proposerName(),
+                proposal.targetId(),
+                proposal.targetName()
+            );
             if (!chargeResult.success()) {
+                return;
+            }
+            if (!beginPersistenceTask()) {
+                marriageCostService.refund(combineReceipts(proposal.sendChargeReceipts(), chargeResult.receipts()));
+                runOnlinePlayerTask(proposal.targetId(), onlinePlayer -> messages.send(onlinePlayer, "errors.storage-failure"));
+                runOnlinePlayerTask(proposal.proposerId(), onlinePlayer -> messages.send(onlinePlayer, "errors.storage-failure"));
                 return;
             }
 
@@ -193,22 +233,24 @@ public final class MarriageService {
                 } catch (SQLException exception) {
                     plugin.getLogger().log(Level.SEVERE, "Failed to save marriage", exception);
                     taskDispatcher.runGlobal(() -> {
-                        marriageCostService.refund(chargeResult);
+                        marriageCostService.refund(combineReceipts(proposal.sendChargeReceipts(), chargeResult.receipts()));
                         runOnlinePlayerTask(proposal.targetId(), onlinePlayer -> messages.send(onlinePlayer, "errors.storage-failure"));
                         runOnlinePlayerTask(proposal.proposerId(), onlinePlayer -> messages.send(onlinePlayer, "errors.storage-failure"));
                     });
+                } finally {
+                    endPersistenceTask();
                 }
             });
         });
     }
 
-    public void denyProposal(Player target, UUID proposerId) {
+    public void denyProposal(Player target, String proposerName) {
         PendingProposal proposal = proposalsByTarget.get(target.getUniqueId());
         if (proposal == null) {
             messages.send(target, "proposal.none");
             return;
         }
-        if (proposerId != null && !proposal.proposerId().equals(proposerId)) {
+        if (proposerName != null && !proposal.proposerName().equalsIgnoreCase(proposerName)) {
             messages.send(target, "proposal.none-from-player");
             return;
         }
@@ -216,17 +258,21 @@ public final class MarriageService {
         clearPendingState(target.getUniqueId(), false);
         messages.send(target, "proposal.denied-target", Map.of("player", proposal.proposerName()));
 
-        taskDispatcher.runGlobal(() -> runOnlinePlayerTask(
+        runOnlinePlayerTask(
             proposal.proposerId(),
             proposer -> messages.send(
                 proposer,
                 "proposal.denied-proposer",
                 Map.of("player", target.getName())
             )
-        ));
+        );
     }
 
     public void divorce(Player player) {
+        if (isShuttingDown()) {
+            messages.send(player, "errors.storage-failure");
+            return;
+        }
         MarriageRecord marriage = getMarriage(player.getUniqueId());
         if (marriage == null) {
             messages.send(player, "marriage.not-married");
@@ -234,6 +280,10 @@ public final class MarriageService {
         }
 
         UUID partnerId = marriage.partnerOf(player.getUniqueId());
+        if (!beginPersistenceTask()) {
+            messages.send(player, "errors.storage-failure");
+            return;
+        }
         taskDispatcher.runAsync(() -> {
             try {
                 repository.delete(marriage);
@@ -243,6 +293,8 @@ public final class MarriageService {
             } catch (SQLException exception) {
                 plugin.getLogger().log(Level.SEVERE, "Failed to delete marriage", exception);
                 taskDispatcher.runEntity(player, () -> messages.send(player, "errors.storage-failure"));
+            } finally {
+                endPersistenceTask();
             }
         });
     }
@@ -254,14 +306,14 @@ public final class MarriageService {
             cancelExpiryTask(playerId);
 
             if (disconnected) {
-                taskDispatcher.runGlobal(() -> runOnlinePlayerTask(
+                runOnlinePlayerTask(
                     incoming.proposerId(),
                     proposer -> messages.send(
                         proposer,
                         "proposal.cancelled-disconnect",
                         Map.of("player", incoming.targetName())
                     )
-                ));
+                );
             }
         }
 
@@ -276,14 +328,14 @@ public final class MarriageService {
             return;
         }
 
-        taskDispatcher.runGlobal(() -> runOnlinePlayerTask(
+        runOnlinePlayerTask(
             targetId,
             target -> messages.send(
                 target,
                 "proposal.cancelled-disconnect",
                 Map.of("player", outgoing.proposerName())
             )
-        ));
+        );
     }
 
     private void expireProposal(UUID targetId, boolean notify) {
@@ -299,30 +351,68 @@ public final class MarriageService {
             return;
         }
 
-        taskDispatcher.runGlobal(() -> {
-            runOnlinePlayerTask(
-                proposal.proposerId(),
-                proposer -> messages.send(
-                    proposer,
-                    "proposal.expired-proposer",
-                    Map.of("player", proposal.targetName())
-                )
-            );
-            runOnlinePlayerTask(
-                targetId,
-                target -> messages.send(
-                    target,
-                    "proposal.expired-target",
-                    Map.of("player", proposal.proposerName())
-                )
-            );
-        });
+        runOnlinePlayerTask(
+            proposal.proposerId(),
+            proposer -> messages.send(
+                proposer,
+                "proposal.expired-proposer",
+                Map.of("player", proposal.targetName())
+            )
+        );
+        runOnlinePlayerTask(
+            targetId,
+            target -> messages.send(
+                target,
+                "proposal.expired-target",
+                Map.of("player", proposal.proposerName())
+            )
+        );
     }
 
     private void cancelExpiryTask(UUID targetId) {
         ScheduledTask task = expiryTasks.remove(targetId);
         if (task != null) {
             task.cancel();
+        }
+    }
+
+    private boolean isShuttingDown() {
+        synchronized (persistenceMonitor) {
+            return shuttingDown;
+        }
+    }
+
+    private boolean beginPersistenceTask() {
+        synchronized (persistenceMonitor) {
+            if (shuttingDown) {
+                return false;
+            }
+
+            inFlightPersistenceTasks++;
+            return true;
+        }
+    }
+
+    private void endPersistenceTask() {
+        synchronized (persistenceMonitor) {
+            inFlightPersistenceTasks--;
+            if (inFlightPersistenceTasks == 0) {
+                persistenceMonitor.notifyAll();
+            }
+        }
+    }
+
+    private void waitForPersistenceTasks() {
+        synchronized (persistenceMonitor) {
+            while (inFlightPersistenceTasks > 0) {
+                try {
+                    persistenceMonitor.wait();
+                } catch (InterruptedException exception) {
+                    Thread.currentThread().interrupt();
+                    plugin.getLogger().log(Level.WARNING, "Interrupted while waiting for persistence tasks to finish", exception);
+                    return;
+                }
+            }
         }
     }
 
@@ -367,12 +457,7 @@ public final class MarriageService {
     }
 
     private void runOnlinePlayerTask(UUID playerId, Consumer<Player> action) {
-        Player player = Bukkit.getPlayer(playerId);
-        if (player == null || !player.isOnline()) {
-            return;
-        }
-
-        taskDispatcher.runEntity(player, () -> action.accept(player));
+        taskDispatcher.runPlayer(playerId, action);
     }
 
     private String nameOf(OfflinePlayer player) {
@@ -385,5 +470,19 @@ public final class MarriageService {
             "seconds", String.valueOf(settings.marriage().proposalExpirySeconds()),
             "cost", marriageCostService.displayAmount()
         );
+    }
+
+    private List<ChargeReceipt> combineReceipts(List<ChargeReceipt> first, List<ChargeReceipt> second) {
+        if (first.isEmpty()) {
+            return second;
+        }
+        if (second.isEmpty()) {
+            return first;
+        }
+
+        List<ChargeReceipt> combined = new java.util.ArrayList<>(first.size() + second.size());
+        combined.addAll(first);
+        combined.addAll(second);
+        return combined;
     }
 }

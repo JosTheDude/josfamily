@@ -6,8 +6,7 @@ import org.bukkit.configuration.file.FileConfiguration;
 public record PluginSettings(
     DatabaseSettings database,
     MarriageSettings marriage,
-    AdoptionSettings adoption,
-    FamilyTreeSettings familyTree,
+    ProposalDistanceSettings proposalDistance,
     MarriageCostSettings marriageCost
 ) {
     public static PluginSettings from(FileConfiguration config) {
@@ -31,25 +30,20 @@ public record PluginSettings(
             config.getBoolean("marriage.divorce-requires-confirmation", true)
         );
 
-        AdoptionSettings adoption = new AdoptionSettings(
-            Math.max(10L, config.getLong("adoption.request-expiry-seconds", 60L)),
-            config.getBoolean("adoption.broadcast-adoptions", true),
-            Math.max(1, config.getInt("adoption.max-parents-per-child", 2)),
-            Math.max(0, config.getInt("adoption.max-children-per-parent", 0))
-        );
-
-        FamilyTreeSettings familyTree = new FamilyTreeSettings(
-            Math.max(1, config.getInt("family-tree.max-generations", 4)),
-            Math.max(8, config.getInt("family-tree.max-members", 48))
+        ProposalDistanceSettings proposalDistance = new ProposalDistanceSettings(
+            config.getBoolean("modules.proposal-distance.enabled", true),
+            Math.max(0D, config.getDouble("modules.proposal-distance.radius", 8D))
         );
 
         MarriageCostSettings marriageCost = new MarriageCostSettings(
             config.getBoolean("modules.marriage-cost.enabled", false),
             Math.max(0D, config.getDouble("modules.marriage-cost.amount", 0D)),
-            MarriageCostChargeMode.valueOf(config.getString("modules.marriage-cost.charge-mode", "BOTH").toUpperCase())
+            MarriageCostChargeMode.valueOf(config.getString("modules.marriage-cost.charge-mode", "BOTH").toUpperCase()),
+            MarriageCostChargeStage.valueOf(config.getString("modules.marriage-cost.proposer-charge-stage", "ACCEPT").toUpperCase()),
+            MarriageCostChargeStage.valueOf(config.getString("modules.marriage-cost.target-charge-stage", "ACCEPT").toUpperCase())
         );
 
-        return new PluginSettings(database, marriage, adoption, familyTree, marriageCost);
+        return new PluginSettings(database, marriage, proposalDistance, marriageCost);
     }
 
     public record DatabaseSettings(
@@ -71,33 +65,34 @@ public record PluginSettings(
         boolean divorceRequiresConfirmation
     ) {}
 
-    public record AdoptionSettings(
-        long requestExpirySeconds,
-        boolean broadcastAdoptions,
-        int maxParentsPerChild,
-        int maxChildrenPerParent
-    ) {
-        public boolean hasParentCapacity(int parentCount) {
-            return parentCount < maxParentsPerChild;
-        }
-
-        public boolean hasChildCapacity(int childCount) {
-            return maxChildrenPerParent == 0 || childCount < maxChildrenPerParent;
-        }
-    }
-
-    public record FamilyTreeSettings(
-        int maxGenerations,
-        int maxMembers
+    public record ProposalDistanceSettings(
+        boolean enabled,
+        double radius
     ) {}
 
     public record MarriageCostSettings(
         boolean enabled,
         double amount,
-        MarriageCostChargeMode chargeMode
+        MarriageCostChargeMode chargeMode,
+        MarriageCostChargeStage proposerChargeStage,
+        MarriageCostChargeStage targetChargeStage
     ) {
         public boolean active() {
             return enabled && amount > 0D;
+        }
+
+        public boolean chargesProposerAt(MarriageCostChargeStage stage) {
+            return active() && switch (chargeMode) {
+                case PROPOSER, BOTH -> proposerChargeStage == stage;
+                case TARGET -> false;
+            };
+        }
+
+        public boolean chargesTargetAt(MarriageCostChargeStage stage) {
+            return active() && switch (chargeMode) {
+                case TARGET, BOTH -> targetChargeStage == stage;
+                case PROPOSER -> false;
+            };
         }
     }
 
@@ -105,5 +100,10 @@ public record PluginSettings(
         PROPOSER,
         TARGET,
         BOTH
+    }
+
+    public enum MarriageCostChargeStage {
+        SEND,
+        ACCEPT
     }
 }

@@ -1,6 +1,6 @@
 menus:
   proposal:
-    title: "<#f5c2e7><bold>Marriage Proposal</bold></#f5c2e7>"
+    title: "Marriage Proposal (<player>)"
     structure:
       - "# # # # # # # # #"
       - "# # a # i # d # #"
@@ -19,7 +19,7 @@ menus:
         name: "<#f5c2e7><player></#f5c2e7>"
         lore:
           - "<#d3d3d3>Wants to marry you.</#d3d3d3>"
-          - "<#89dceb>Marriage cost:</#89dceb> <#f9e2af><cost></#f9e2af>"
+          - "<#6c6f85>Your cost on accept: <u><cost></u></#6c6f85>"
       accept:
         slot-key: "a"
         material: LIME_DYE
@@ -36,7 +36,7 @@ menus:
           - "<#d3d3d3>Reject this marriage proposal.</#d3d3d3>"
 
   divorce:
-    title: "<#f38ba8><bold>Divorce Confirmation</bold></#f38ba8>"
+    title: "Divorce Confirmation (<player>)"
     structure:
       - "# # # # # # # # #"
       - "# # c # i # x # #"
@@ -69,38 +69,3 @@ menus:
         name: "<#a6e3a1><bold>Keep Marriage</bold></#a6e3a1>"
         lore:
           - "<#d3d3d3>Close this menu and stay married.</#d3d3d3>"
-
-  adoption:
-    title: "<#89dceb><bold>Adoption Request</bold></#89dceb>"
-    structure:
-      - "# # # # # # # # #"
-      - "# # a # i # d # #"
-      - "# # # # # # # # #"
-    fill:
-      enabled: true
-      slot-key: "#"
-      material: AIR
-      name: " "
-      lore: []
-    items:
-      info:
-        slot-key: "i"
-        material: NAME_TAG
-        amount: 1
-        name: "<#f5c2e7><player></#f5c2e7>"
-        lore:
-          - "<#d3d3d3>Wants to adopt you.</#d3d3d3>"
-      accept:
-        slot-key: "a"
-        material: LIME_DYE
-        amount: 1
-        name: "<#a6e3a1><bold>Accept</bold></#a6e3a1>"
-        lore:
-          - "<#d3d3d3>Accept this adoption request.</#d3d3d3>"
-      deny:
-        slot-key: "d"
-        material: RED_DYE
-        amount: 1
-        name: "<#f38ba8><bold>Deny</bold></#f38ba8>"
-        lore:
-          - "<#d3d3d3>Reject this adoption request.</#d3d3d3>"
