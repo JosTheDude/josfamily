@@ -63,6 +63,21 @@ public final class MarriageCommand extends BaseCommand {
         );
     }
 
+    @Subcommand("ring")
+    @CommandCompletion("@players")
+    @Syntax("<player>")
+    @Description("Buy a marriage ring for a player")
+    public void onRing(Player player, String targetName) {
+        if (player.getName().equalsIgnoreCase(targetName)) {
+            plugin.messages().send(player, "marriage.cannot-marry-self");
+            return;
+        }
+
+        resolveOnlinePlayer(player, targetName, target ->
+            plugin.taskDispatcher().runEntity(player, () -> plugin.marriageRingService().purchaseRing(player, target.playerId(), target.name()))
+        );
+    }
+
     @Subcommand("status")
     @Syntax("[player]")
     @CommandCompletion("@players")
@@ -114,8 +129,18 @@ public final class MarriageCommand extends BaseCommand {
         plugin.marriageService().divorce(player);
     }
 
-    @Subcommand("reload")
-    public void onReload(Player player) {
+    @Subcommand("admin")
+    public void onAdmin(Player player) {
+        if (!player.hasPermission("josfamily.admin.reload")) {
+            plugin.messages().send(player, "errors.no-permission");
+            return;
+        }
+
+        plugin.messages().send(player, "help.admin");
+    }
+
+    @Subcommand("admin reload")
+    public void onAdminReload(Player player) {
         if (!player.hasPermission("josfamily.admin.reload")) {
             plugin.messages().send(player, "errors.no-permission");
             return;

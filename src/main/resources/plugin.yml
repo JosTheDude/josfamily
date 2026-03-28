@@ -10,7 +10,7 @@ softdepend: [Vault]
 commands:
   marry:
     description: Main marriage command
-    usage: /marry [player|propose|accept|deny|divorce|status|reload]
+    usage: /marry [player|propose|ring|accept|deny|divorce|status|admin reload]
     aliases: [marriage, family]
 permissions:
   josfamily.admin.reload:

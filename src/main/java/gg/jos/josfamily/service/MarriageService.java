@@ -12,9 +12,11 @@ import gg.jos.josfamily.storage.SqlMarriageRepository;
 import io.papermc.paper.threadedregions.scheduler.ScheduledTask;
 import java.sql.SQLException;
 import java.time.Instant;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
@@ -37,6 +39,8 @@ public final class MarriageService {
     private final ConcurrentMap<UUID, UUID> targetByProposer = new ConcurrentHashMap<>();
     private final ConcurrentMap<UUID, ScheduledTask> expiryTasks = new ConcurrentHashMap<>();
     private final Object persistenceMonitor = new Object();
+    private final Object operationMonitor = new Object();
+    private final Set<UUID> playersWithActiveOperation = new LinkedHashSet<>();
     private int inFlightPersistenceTasks;
     private boolean shuttingDown;
 
@@ -84,6 +88,29 @@ public final class MarriageService {
 
     public Optional<PendingProposal> getIncomingProposal(UUID targetId) {
         return Optional.ofNullable(proposalsByTarget.get(targetId));
+    }
+
+    public boolean hasPendingProposal(UUID playerId) {
+        return proposalsByTarget.containsKey(playerId) || targetByProposer.containsKey(playerId);
+    }
+
+    public DirectMarriageEligibility checkDirectMarriageEligibility(UUID proposerId, UUID targetId) {
+        if (proposerId.equals(targetId)) {
+            return DirectMarriageEligibility.SELF;
+        }
+        if (getMarriage(proposerId) != null) {
+            return DirectMarriageEligibility.PROPOSER_MARRIED;
+        }
+        if (getMarriage(targetId) != null) {
+            return DirectMarriageEligibility.TARGET_MARRIED;
+        }
+        if (hasPendingProposal(proposerId)) {
+            return DirectMarriageEligibility.PROPOSER_HAS_PENDING_PROPOSAL;
+        }
+        if (hasPendingProposal(targetId)) {
+            return DirectMarriageEligibility.TARGET_HAS_PENDING_PROPOSAL;
+        }
+        return DirectMarriageEligibility.ELIGIBLE;
     }
 
     public PendingProposal createProposal(Player proposer, UUID targetId, String targetName) {
@@ -194,12 +221,17 @@ public final class MarriageService {
             messages.send(target, "marriage.already-married");
             return;
         }
+        if (!beginPlayerOperation(proposal.proposerId(), proposal.targetId())) {
+            messages.send(target, "errors.operation-in-progress");
+            return;
+        }
 
         clearPendingState(target.getUniqueId(), false);
         taskDispatcher.runGlobal(() -> {
             Player onlineTarget = Bukkit.getPlayer(proposal.targetId());
             Player onlineProposer = Bukkit.getPlayer(proposal.proposerId());
             if (onlineTarget == null || onlineProposer == null) {
+                endPlayerOperation(proposal.proposerId(), proposal.targetId());
                 runOnlinePlayerTask(proposal.targetId(), player -> messages.send(player, "proposal.proposer-offline"));
                 return;
             }
@@ -211,9 +243,11 @@ public final class MarriageService {
                 proposal.targetName()
             );
             if (!chargeResult.success()) {
+                endPlayerOperation(proposal.proposerId(), proposal.targetId());
                 return;
             }
             if (!beginPersistenceTask()) {
+                endPlayerOperation(proposal.proposerId(), proposal.targetId());
                 marriageCostService.refund(combineReceipts(proposal.sendChargeReceipts(), chargeResult.receipts()));
                 runOnlinePlayerTask(proposal.targetId(), onlinePlayer -> messages.send(onlinePlayer, "errors.storage-failure"));
                 runOnlinePlayerTask(proposal.proposerId(), onlinePlayer -> messages.send(onlinePlayer, "errors.storage-failure"));
@@ -238,6 +272,7 @@ public final class MarriageService {
                         runOnlinePlayerTask(proposal.proposerId(), onlinePlayer -> messages.send(onlinePlayer, "errors.storage-failure"));
                     });
                 } finally {
+                    endPlayerOperation(proposal.proposerId(), proposal.targetId());
                     endPersistenceTask();
                 }
             });
@@ -280,7 +315,12 @@ public final class MarriageService {
         }
 
         UUID partnerId = marriage.partnerOf(player.getUniqueId());
+        if (!beginPlayerOperation(player.getUniqueId(), partnerId)) {
+            messages.send(player, "errors.operation-in-progress");
+            return;
+        }
         if (!beginPersistenceTask()) {
+            endPlayerOperation(player.getUniqueId(), partnerId);
             messages.send(player, "errors.storage-failure");
             return;
         }
@@ -294,6 +334,48 @@ public final class MarriageService {
                 plugin.getLogger().log(Level.SEVERE, "Failed to delete marriage", exception);
                 taskDispatcher.runEntity(player, () -> messages.send(player, "errors.storage-failure"));
             } finally {
+                endPlayerOperation(player.getUniqueId(), partnerId);
+                endPersistenceTask();
+            }
+        });
+    }
+
+    public void createDirectMarriage(DirectMarriageRequest request, Consumer<DirectMarriageCreationResult> completion) {
+        if (isShuttingDown()) {
+            completion.accept(DirectMarriageCreationResult.STORAGE_FAILURE);
+            return;
+        }
+
+        DirectMarriageEligibility eligibility = checkDirectMarriageEligibility(request.proposerId(), request.targetId());
+        if (eligibility != DirectMarriageEligibility.ELIGIBLE) {
+            completion.accept(DirectMarriageCreationResult.fromEligibility(eligibility));
+            return;
+        }
+        if (!beginPlayerOperation(request.proposerId(), request.targetId())) {
+            completion.accept(DirectMarriageCreationResult.OPERATION_IN_PROGRESS);
+            return;
+        }
+        if (!beginPersistenceTask()) {
+            endPlayerOperation(request.proposerId(), request.targetId());
+            completion.accept(DirectMarriageCreationResult.STORAGE_FAILURE);
+            return;
+        }
+
+        MarriageRecord marriage = MarriageRecord.create(request.proposerId(), request.targetId(), Instant.now());
+        taskDispatcher.runAsync(() -> {
+            try {
+                repository.insert(marriage);
+                marriagesByPlayer.put(marriage.partnerOne(), marriage);
+                marriagesByPlayer.put(marriage.partnerTwo(), marriage);
+                taskDispatcher.runGlobal(() -> {
+                    notifyMarriageCreated(request.proposerId(), request.proposerName(), request.targetId(), request.targetName());
+                    completion.accept(DirectMarriageCreationResult.SUCCESS);
+                });
+            } catch (SQLException exception) {
+                plugin.getLogger().log(Level.SEVERE, "Failed to save marriage", exception);
+                taskDispatcher.runGlobal(() -> completion.accept(DirectMarriageCreationResult.STORAGE_FAILURE));
+            } finally {
+                endPlayerOperation(request.proposerId(), request.targetId());
                 endPersistenceTask();
             }
         });
@@ -382,6 +464,26 @@ public final class MarriageService {
         }
     }
 
+    private boolean beginPlayerOperation(UUID... playerIds) {
+        List<UUID> uniquePlayerIds = uniquePlayerIds(playerIds);
+        synchronized (operationMonitor) {
+            for (UUID playerId : uniquePlayerIds) {
+                if (playersWithActiveOperation.contains(playerId)) {
+                    return false;
+                }
+            }
+            playersWithActiveOperation.addAll(uniquePlayerIds);
+            return true;
+        }
+    }
+
+    private void endPlayerOperation(UUID... playerIds) {
+        List<UUID> uniquePlayerIds = uniquePlayerIds(playerIds);
+        synchronized (operationMonitor) {
+            playersWithActiveOperation.removeAll(uniquePlayerIds);
+        }
+    }
+
     private boolean beginPersistenceTask() {
         synchronized (persistenceMonitor) {
             if (shuttingDown) {
@@ -417,13 +519,17 @@ public final class MarriageService {
     }
 
     private void notifyMarriageCreated(PendingProposal proposal) {
+        notifyMarriageCreated(proposal.proposerId(), proposal.proposerName(), proposal.targetId(), proposal.targetName());
+    }
+
+    private void notifyMarriageCreated(UUID proposerId, String proposerName, UUID targetId, String targetName) {
         runOnlinePlayerTask(
-            proposal.targetId(),
-            target -> messages.send(target, "marriage.created-self", Map.of("player", proposal.proposerName()))
+            targetId,
+            target -> messages.send(target, "marriage.created-self", Map.of("player", proposerName))
         );
         runOnlinePlayerTask(
-            proposal.proposerId(),
-            proposer -> messages.send(proposer, "marriage.created-partner", Map.of("player", proposal.targetName()))
+            proposerId,
+            proposer -> messages.send(proposer, "marriage.created-partner", Map.of("player", targetName))
         );
 
         if (!settings.marriage().broadcastMarriages()) {
@@ -432,7 +538,7 @@ public final class MarriageService {
 
         messages.broadcast(
             "marriage.broadcast",
-            Map.of("player_one", proposal.proposerName(), "player_two", proposal.targetName())
+            Map.of("player_one", proposerName, "player_two", targetName)
         );
     }
 
@@ -484,5 +590,53 @@ public final class MarriageService {
         combined.addAll(first);
         combined.addAll(second);
         return combined;
+    }
+
+    private List<UUID> uniquePlayerIds(UUID... playerIds) {
+        LinkedHashSet<UUID> unique = new LinkedHashSet<>();
+        for (UUID playerId : playerIds) {
+            if (playerId != null) {
+                unique.add(playerId);
+            }
+        }
+        return List.copyOf(unique);
+    }
+
+    public record DirectMarriageRequest(
+        UUID proposerId,
+        String proposerName,
+        UUID targetId,
+        String targetName
+    ) {}
+
+    public enum DirectMarriageEligibility {
+        ELIGIBLE,
+        SELF,
+        PROPOSER_MARRIED,
+        TARGET_MARRIED,
+        PROPOSER_HAS_PENDING_PROPOSAL,
+        TARGET_HAS_PENDING_PROPOSAL
+    }
+
+    public enum DirectMarriageCreationResult {
+        SUCCESS,
+        STORAGE_FAILURE,
+        OPERATION_IN_PROGRESS,
+        PROPOSER_MARRIED,
+        TARGET_MARRIED,
+        PROPOSER_HAS_PENDING_PROPOSAL,
+        TARGET_HAS_PENDING_PROPOSAL,
+        SELF;
+
+        private static DirectMarriageCreationResult fromEligibility(DirectMarriageEligibility eligibility) {
+            return switch (eligibility) {
+                case ELIGIBLE -> SUCCESS;
+                case SELF -> SELF;
+                case PROPOSER_MARRIED -> PROPOSER_MARRIED;
+                case TARGET_MARRIED -> TARGET_MARRIED;
+                case PROPOSER_HAS_PENDING_PROPOSAL -> PROPOSER_HAS_PENDING_PROPOSAL;
+                case TARGET_HAS_PENDING_PROPOSAL -> TARGET_HAS_PENDING_PROPOSAL;
+            };
+        }
     }
 }

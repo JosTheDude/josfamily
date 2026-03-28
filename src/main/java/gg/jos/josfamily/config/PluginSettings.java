@@ -1,13 +1,15 @@
 package gg.jos.josfamily.config;
 
 import gg.jos.josfamily.storage.DatabaseType;
+import org.bukkit.Material;
 import org.bukkit.configuration.file.FileConfiguration;
 
 public record PluginSettings(
     DatabaseSettings database,
     MarriageSettings marriage,
     ProposalDistanceSettings proposalDistance,
-    MarriageCostSettings marriageCost
+    MarriageCostSettings marriageCost,
+    MarriageRingSettings marriageRing
 ) {
     public static PluginSettings from(FileConfiguration config) {
         DatabaseType type = DatabaseType.valueOf(config.getString("database.type", "SQLITE").toUpperCase());
@@ -43,7 +45,14 @@ public record PluginSettings(
             MarriageCostChargeStage.valueOf(config.getString("modules.marriage-cost.target-charge-stage", "ACCEPT").toUpperCase())
         );
 
-        return new PluginSettings(database, marriage, proposalDistance, marriageCost);
+        MarriageRingSettings marriageRing = new MarriageRingSettings(
+            config.getBoolean("modules.marriage-ring.enabled", true),
+            Math.max(0D, config.getDouble("modules.marriage-ring.cost", 500D)),
+            resolveMaterial(config.getString("modules.marriage-ring.material", "GOLD_NUGGET")),
+            config.getBoolean("modules.marriage-ring.enchanted-glint", true)
+        );
+
+        return new PluginSettings(database, marriage, proposalDistance, marriageCost, marriageRing);
     }
 
     public record DatabaseSettings(
@@ -96,6 +105,17 @@ public record PluginSettings(
         }
     }
 
+    public record MarriageRingSettings(
+        boolean enabled,
+        double cost,
+        Material material,
+        boolean enchantedGlint
+    ) {
+        public boolean requiresEconomy() {
+            return cost > 0D;
+        }
+    }
+
     public enum MarriageCostChargeMode {
         PROPOSER,
         TARGET,
@@ -105,5 +125,13 @@ public record PluginSettings(
     public enum MarriageCostChargeStage {
         SEND,
         ACCEPT
+    }
+
+    private static Material resolveMaterial(String input) {
+        Material material = Material.matchMaterial(input == null ? "GOLD_NUGGET" : input);
+        if (material == null || !material.isItem()) {
+            return Material.GOLD_NUGGET;
+        }
+        return material;
     }
 }

@@ -26,6 +26,11 @@ modules:
     # SEND: The player will be charged when they send the proposal
     proposer-charge-stage: SEND
     target-charge-stage: ACCEPT
+  marriage-ring:
+    enabled: true
+    cost: 500.0
+    material: GOLD_NUGGET
+    enchanted-glint: true
 
 marriage:
   proposal-expiry-seconds: 60

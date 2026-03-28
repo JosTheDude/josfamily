@@ -5,7 +5,9 @@ import gg.jos.josfamily.command.MarriageCommand;
 import gg.jos.josfamily.compat.economy.MarriageCostService;
 import gg.jos.josfamily.config.MessageService;
 import gg.jos.josfamily.config.PluginSettings;
+import gg.jos.josfamily.listener.MarriageRingListener;
 import gg.jos.josfamily.listener.PlayerConnectionListener;
+import gg.jos.josfamily.module.ring.MarriageRingService;
 import gg.jos.josfamily.scheduler.FoliaTaskDispatcher;
 import gg.jos.josfamily.service.FamilyTreeService;
 import gg.jos.josfamily.service.MarriageService;
@@ -35,6 +37,7 @@ public final class JosFamily extends JavaPlugin {
     private SqlMarriageRepository marriageRepository;
     private MarriageCostService marriageCostService;
     private MarriageService marriageService;
+    private MarriageRingService marriageRingService;
     private FamilyTreeService familyTreeService;
     private MarriageUiFactory marriageUiFactory;
     private PaperCommandManager commandManager;
@@ -58,6 +61,7 @@ public final class JosFamily extends JavaPlugin {
 
         registerCommands();
         getServer().getPluginManager().registerEvents(new PlayerConnectionListener(this), this);
+        getServer().getPluginManager().registerEvents(new MarriageRingListener(this), this);
     }
 
     @Override
@@ -85,6 +89,7 @@ public final class JosFamily extends JavaPlugin {
         marriageCostService = MarriageCostService.create(this, settings.marriageCost(), messages);
         marriageService = new MarriageService(this, taskDispatcher, settings, messages, marriageRepository, marriageCostService);
         marriageService.initialize();
+        marriageRingService = MarriageRingService.create(this, settings.marriageRing(), messages, marriageService);
         familyTreeService = new FamilyTreeService(marriageService);
         marriageUiFactory = new MarriageUiFactory(this, uiConfig);
     }
@@ -157,5 +162,9 @@ public final class JosFamily extends JavaPlugin {
 
     public MarriageCostService marriageCostService() {
         return marriageCostService;
+    }
+
+    public MarriageRingService marriageRingService() {
+        return marriageRingService;
     }
 }

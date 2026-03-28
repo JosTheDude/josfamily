@@ -1,13 +1,15 @@
 prefix: ""
 
 help:
-  player: "<prefix><#d3d3d3>Use <#89b4fa>/family propose &lt;player&gt;</#89b4fa> or <#89b4fa>/family &lt;player&gt;</#89b4fa> to propose, <#89b4fa>/family accept [player]</#89b4fa>, <#89b4fa>/family deny [player]</#89b4fa>, <#89b4fa>/family divorce</#89b4fa>, or <#89b4fa>/family status [player]</#89b4fa>.</#d3d3d3>"
+  player: "<prefix><#d3d3d3>Use <#89b4fa>/family propose &lt;player&gt;</#89b4fa> or <#89b4fa>/family &lt;player&gt;</#89b4fa> to propose, <#89b4fa>/family ring &lt;player&gt;</#89b4fa> to buy a ring, <#89b4fa>/family accept [player]</#89b4fa>, <#89b4fa>/family deny [player]</#89b4fa>, <#89b4fa>/family divorce</#89b4fa>, or <#89b4fa>/family status [player]</#89b4fa>.</#d3d3d3>"
+  admin: "<prefix><#d3d3d3>Admin commands: <#89b4fa>/family admin reload</#89b4fa>.</#d3d3d3>"
 
 errors:
   no-permission: "<prefix><#f38ba8>You do not have permission for that.</#f38ba8>"
   player-not-found: "<prefix><#f38ba8>Could not find online player <#f5c2e7><player></#f5c2e7>.</#f38ba8>"
   storage-failure: "<prefix><#f38ba8>A database error occurred. Try again in a moment.</#f38ba8>"
-  economy-unavailable: "<prefix><#f38ba8>The marriage cost module is enabled, but no Vault economy provider is available.</#f38ba8>"
+  economy-unavailable: "<prefix><#f38ba8>An economy-backed marriage feature is enabled, but no Vault economy provider is available.</#f38ba8>"
+  operation-in-progress: "<prefix><#f38ba8>A marriage action for one of those players is already in progress.</#f38ba8>"
 
 admin:
   reload-success: "<prefix><#a6e3a1>Configuration reloaded.</#a6e3a1>"
@@ -38,6 +40,27 @@ marriage:
   divorced-self: "<prefix><#f38ba8>You divorced <#f5c2e7><player></#f5c2e7>.</#f38ba8>"
   divorced-partner: "<prefix><#f38ba8><player> divorced you.</#f38ba8>"
   broadcast: "<prefix><#f5c2e7><player_one></#f5c2e7><#d3d3d3> and </#d3d3d3><#f5c2e7><player_two></#f5c2e7><#d3d3d3> are now married.</#d3d3d3>"
+
+ring:
+  disabled: "<prefix><#f38ba8>The marriage ring module is disabled.</#f38ba8>"
+  purchased: "<prefix><#a6e3a1>You bought a marriage ring for <#f5c2e7><player></#f5c2e7> for <#f9e2af><cost></#f9e2af>. Give it to them and have them right click it.</#a6e3a1>"
+  inventory-full: "<prefix><#f9e2af>Your inventory was full, so the ring for <#f5c2e7><player></#f5c2e7> was dropped at your feet.</#f9e2af>"
+  insufficient-funds: "<prefix><#f38ba8>You need <#f9e2af><amount></#f9e2af> to buy a marriage ring for <#f5c2e7><player></#f5c2e7>.</#f38ba8>"
+  not-your-ring: "<prefix><#f38ba8>This ring is meant for <#f5c2e7><player></#f5c2e7>.</#f38ba8>"
+  proposer-offline: "<prefix><#f38ba8><player> must be online when you accept their ring.</#f38ba8>"
+  activation-pending: "<prefix><#f38ba8>This ring is already being processed.</#f38ba8>"
+  used: "<prefix><#a6e3a1>You accepted <#f5c2e7><player></#f5c2e7>'s marriage ring.</#a6e3a1>"
+  proposer-married: "<prefix><#f38ba8><player> is already married.</#f38ba8>"
+  proposer-has-pending-proposal: "<prefix><#f38ba8><player> must resolve a pending marriage proposal before a ring can be used.</#f38ba8>"
+  target-has-pending-proposal: "<prefix><#f38ba8><player> must resolve their pending marriage proposal before a ring can be used.</#f38ba8>"
+  item-name: "<#f9e2af>Marriage Ring</#f9e2af>"
+  item-lore:
+    - "<!i><dark_gray>Marriage Ring"
+    - ""
+    - "<!i><#d3d3d3>This ring is from: <#89b4fa><proposer></#89b4fa></#d3d3d3>"
+    - "<!i><#d3d3d3>It is for: <#f5c2e7><player></#f5c2e7></#d3d3d3>"
+    - ""
+    - "<!i><#89dceb>Right Click to accept the marriage!</#89dceb>"
 
 cost:
   charged: "<prefix><#89dceb>You paid <#f9e2af><amount></#f9e2af> for the marriage cost.</#89dceb>"
